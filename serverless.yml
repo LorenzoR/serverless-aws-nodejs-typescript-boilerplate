@@ -5,9 +5,26 @@ service:
 #org: your-org-name
 
 custom:
+  stage: ${opt:stage, self:provider.stage}
+  LAST_TRANSACTION_TABLE: ${self:custom.stage}-last-transaction
   webpack:
     webpackConfig: ./webpack.config.js
     includeModules: true
+  dynamodb:
+    # If you only want to use DynamoDB Local in some stages, declare them here
+    stages:
+      - dev
+      - local
+    start:
+      port: 8000
+      inMemory: true
+      heapInitial: 200m
+      heapMax: 1g
+      migrate: true
+      seed: true
+      convertEmptyValues: true
+    # Uncomment only if you already have a DynamoDB running locally
+    # noStart: true
 
 provider:
   name: aws
@@ -16,18 +33,68 @@ provider:
     minimumCompressionSize: 1024 # Enable gzip compression for responses > 1 KB
   environment:
     AWS_NODEJS_CONNECTION_REUSE_ENABLED: 1
+    LAST_TRANSACTION_TABLE: ${self:custom.LAST_TRANSACTION_TABLE}
+    STAGE: ${self:provider.stage}
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+      Resource:
+        - "Fn::GetAtt": [ LastTransactionTable, Arn ]
 
 functions:
   hello:
-    handler: src/handler.hello
+    handler: src/handlers/profit.getProfit
     events:
       - http:
           method: get
-          path: hello
+          path: profit
+  orders:
+    handler: src/handlers/profit.getOrders
+    events:
+      - http:
+          method: get
+          path: orders/{id}
+          request:
+            parameters:
+              paths:
+                id: true
+  rates:
+    handler: src/handlers/profit.getRates
+    events:
+      - http:
+          method: get
+          path: rates/{assetCode}
+          request:
+            parameters:
+              paths:
+                assetCode: false
+
+resources: # CloudFormation template syntax
+  Resources:
+    LastTransactionTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.LAST_TRANSACTION_TABLE}
+        AttributeDefinitions:
+          - AttributeName: Code
+            AttributeType: S
+        KeySchema:
+          - AttributeName: Code
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
 
 plugins:
-  - serverless-offline
   - serverless-webpack
+  - serverless-dynamodb-local
+  - serverless-offline
   - serverless-iam-roles-per-function
   - serverless-create-global-dynamodb-table
   - serverless-prune-plugin

@@ -16,7 +16,8 @@
       "@src/*": ["src/*"],
       "@queries/*": ["queries/*"],
       "@tests/*": ["tests/*"]
-    }
+    },
+    "experimentalDecorators": true,
   },
   "include": ["./**/*.ts"],
   "exclude": [
